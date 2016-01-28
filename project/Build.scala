@@ -10,11 +10,16 @@ private object Settings {
 
   val rsVersion = "0.1.2_9-SNAPSHOT"
   val aeronVersion = "0.9"
+  val scalaLoggingVersion = "3.1.0"
+  val logbackVersion = "1.1.2"
+
 
   val rsNode = "au.com.intelix" %% "rs-core-node" % rsVersion
   val rsAuth = "au.com.intelix" %% "rs-auth" % rsVersion
   val rsWebsocketServer = "au.com.intelix" %% "rs-websocket-server" % rsVersion
   val rsWebClient = "au.com.intelix" %% "rs-core-js" % rsVersion
+  val loggingScala      = "com.typesafe.scala-logging"  %% "scala-logging"                  % scalaLoggingVersion
+  val loggingLogback    = "ch.qos.logback"              %  "logback-classic"                % logbackVersion
 
   val aeron = "uk.co.real-logic" % "aeron-all" % aeronVersion
 
@@ -80,7 +85,8 @@ object Build {
   def settings(module: String) = defaultSettings ++: Seq(
     name := module,
     parallelExecution in Global := false,
-    doc in Compile <<= target.map(_ / "none")
+    doc in Compile <<= target.map(_ / "none"),
+    libraryDependencies ++= Seq(loggingScala, loggingLogback)
   )
 
   lazy val web = Seq(

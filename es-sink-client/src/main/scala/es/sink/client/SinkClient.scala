@@ -47,7 +47,9 @@ class PublicationProxy(val channel: String, val streamId: Int) {
 
 object SinkClient {
 
-  lazy val refFilename = Option(System.getProperty("es.sink.aeron.dir.reffile")) getOrElse (FileUtils.getTempDirectoryPath + java.io.File.pathSeparator + "aeron_ref")
+  val ReferenceFileParameter = "es.sink.aeron.dir.ref"
+  private lazy val DefaultReferenceFilename = FileUtils.getTempDirectoryPath.stripSuffix(java.io.File.separator) + java.io.File.separatorChar + "aeron_ref"
+  lazy val ReferenceFilename = Option(System.getProperty(ReferenceFileParameter)) getOrElse DefaultReferenceFilename
 
   lazy val client: SinkClient = new AeronSinkClient
 
@@ -79,7 +81,7 @@ private class AeronSinkClient extends SinkClient {
 
     override def run(): Unit = {
       logger.debug(s"Aeron Connection Manager started")
-      logger.info(s"Using reference file (use -Des.sink.aeron.dir.reffile): ${SinkClient.refFilename}")
+      logger.info(s"Using reference file (use -Des.sink.aeron.dir.reffile): ${SinkClient.ReferenceFilename}")
 
       var lastKnownDirectory: Option[String] = None
 
@@ -94,7 +96,7 @@ private class AeronSinkClient extends SinkClient {
         })
 
         var dir = ""
-        val refFile = new java.io.File(SinkClient.refFilename)
+        val refFile = new java.io.File(SinkClient.ReferenceFilename)
         if (refFile.exists() && refFile.isFile) dir = Try(FileUtils.readFileToString(refFile)).getOrElse("")
 
         if (dir != null && !dir.isEmpty && new java.io.File(dir).isDirectory) {

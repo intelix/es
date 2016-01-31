@@ -1,27 +1,53 @@
 package es.sink
 
-import java.util.UUID
 import java.util.concurrent.TimeUnit._
 import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor.ActorRef
-import es.model.{StringPayload, Payload}
+import es.model.StringPayload
 import rs.core.actors.StatelessActor
-import rs.core.evt.EvtSource
+import rs.core.evt.{EvtSource, InfoE, TraceE}
 import uk.co.real_logic.aeron.logbuffer.{FragmentHandler, Header}
 import uk.co.real_logic.aeron.{Aeron, FragmentAssembler, Subscription}
-import uk.co.real_logic.agrona.concurrent.{BusySpinIdleStrategy, BackoffIdleStrategy, IdleStrategy}
+import uk.co.real_logic.agrona.concurrent.{BackoffIdleStrategy, IdleStrategy}
 import uk.co.real_logic.agrona.{CloseHelper, DirectBuffer}
 
 
-case class Id(ms: Long, ls: Long)
-case class Meta(tsBase: Long, tags: List[String])
+object MediaSubscriptionActor {
+
+  private object Internal {
+
+    case class Id(ms: Long, ls: Long)
+
+    case class Meta(tsBase: Long, tags: List[String])
+
+  }
+
+  object Evt {
+
+    case object StartingSubscription extends InfoE
+
+    case object NewSource extends InfoE
+
+    case object MetaReceived extends TraceE
+
+    case object DataIgnored extends TraceE
+
+    case object DataReceived extends TraceE
+
+  }
+
+}
 
 class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, target: ActorRef) extends StatelessActor {
+
+  import MediaSubscriptionActor._
+  import Internal._
+
   override val evtSource: EvtSource = "MediaSubscription." + streamId
 
   val subscription = aeron.addSubscription(channel, streamId)
-//  val idleStrategy = new BusySpinIdleStrategy()
+  //  val idleStrategy = new BusySpinIdleStrategy()
   val idleStrategy = new BackoffIdleStrategy(100000, 30, MICROSECONDS.toNanos(1), MICROSECONDS.toNanos(100))
 
   val running = new AtomicBoolean(true)
@@ -32,6 +58,7 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
     directBuffer.getBytes(offset, data)
     data
   }
+
   private def cloneDataAsString(directBuffer: DirectBuffer, offset: Int, length: Int) = new String(cloneData(directBuffer, offset, length), "UTF-8")
 
   val fragmentHandler = new FragmentAssembler(new FragmentHandler {
@@ -47,35 +74,30 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
 
       msgType match {
         case 0 =>
-          if (maybeMeta.isEmpty) {
-            println(s"!>>> New Id: $id")
-          }
+          if (maybeMeta.isEmpty) raise(Evt.NewSource, 'id -> id)
           val tsBase = directBuffer.getLong(offset + 17)
           val fieldsLen = directBuffer.getShort(offset + 17 + 8)
           var i = 0
           var pointer = offset + 17 + 8 + 2
           var list = List[String]()
-          while (i< fieldsLen) {
-
+          while (i < fieldsLen) {
             val len = directBuffer.getShort(pointer)
             pointer += 2
             val v = cloneDataAsString(directBuffer, pointer, len.toInt)
             pointer += len
-
             list = v +: list
-
             i += 1
           }
-
           val newMeta = Meta(tsBase, list.reverse)
           metas += id -> newMeta
-          println(s"!>>>> Received meta: $newMeta")
+          raise(Evt.MetaReceived, 'id -> id, 'details -> newMeta)
         case 1 if maybeMeta.isDefined =>
           val meta = maybeMeta.get
           val tsShift = directBuffer.getShort(offset + 17)
           val ts = meta.tsBase + tsShift
           val str = cloneDataAsString(directBuffer, offset + 17 + 2, length - 17 - 2)
           target ! StringPayload(ts, meta.tags, str)
+          raise(Evt.DataReceived, 'id -> id, 'type -> 1, 'contents -> str)
         case 2 if maybeMeta.isDefined =>
           val meta = maybeMeta.get
           val tsShift = directBuffer.getShort(offset + 17)
@@ -86,7 +108,9 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
           var allTags = meta.tags
           tags.split('\t').foreach(allTags +:= _)
           target ! StringPayload(ts, allTags, str)
-        case 1  => println(s"!>>> Received update for $id but have no meta - ignored")
+          raise(Evt.DataReceived, 'id -> id, 'type -> 2, 'contents -> str, 'tags -> allTags)
+        case 1 => raise(Evt.DataIgnored, 'id -> id, 'type -> 1, 'reason -> "Meta pending")
+        case 2 => raise(Evt.DataIgnored, 'id -> id, 'type -> 2, 'reason -> "Meta pending")
       }
 
     }
@@ -97,7 +121,7 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
   val pollingThread = new Thread(new Worker(running, subscription, idleStrategy, fragmentHandler, fragmentLimitCount), "aeron-sub[" + channel + "]:" + streamId)
   pollingThread.setDaemon(true)
 
-  println(s"!>>>> Starting subscription $channel, $streamId")
+  raise(Evt.StartingSubscription, 'channel -> channel, 'streamId -> streamId)
 
   @throws[Exception](classOf[Exception]) override
   def preStart(): Unit = pollingThread.start()

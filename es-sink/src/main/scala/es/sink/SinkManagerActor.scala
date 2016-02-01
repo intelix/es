@@ -13,7 +13,7 @@ import rs.core.services.StatelessServiceActor
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 
 object SinkManagerActor {
@@ -36,12 +36,12 @@ class SinkManagerActor(id: String) extends StatelessServiceActor(id) {
 
   onSignal {
     case (Subject(_, TopicKey("addSink"), _), data: String) =>
-      Try(ConfigFactory.parseString(data)).toOption match {
-        case Some(cfg) =>
+      Try(ConfigFactory.parseString(data)) match {
+        case Success(cfg) =>
           val id = cfg.asString("id", UUIDTools.generateShortUUID)
           sinks += id -> context.actorOf(Props(classOf[SinkServiceActor], id, cfg, mediaManager))
           SignalOk()
-        case None => SignalFailed()
+        case Failure(_) => SignalFailed()
       }
   }
 

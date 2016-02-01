@@ -53,6 +53,7 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
   val running = new AtomicBoolean(true)
 
   val router = new AtomicReference[Router](Router())
+  var routes = List[EventRoute]()
 
   def forwardPayload(p: Payload) = router.get().accept(p)
 
@@ -136,6 +137,12 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
     CloseHelper.quietClose(subscription)
   }
 
+  onMessage {
+    case r: EventRoute =>
+      routes +:= r
+      router.set(Router(routes))
+  }
+
 }
 
 private class Worker(running: AtomicBoolean, sub: Subscription, idleStrategy: IdleStrategy, fragmentHandler: FragmentHandler, fragmentLimitCount: Int) extends Runnable {
@@ -145,10 +152,10 @@ private class Worker(running: AtomicBoolean, sub: Subscription, idleStrategy: Id
 
 private object Router {
   def apply(): Router = new Router(Array())
-  def apply(routes: Array[Route]): Router = new Router(routes)
+  def apply(routes: List[EventRoute]): Router = new Router(routes.toArray)
 }
 
-private class Router(routes: Array[Route]) extends Route {
+private class Router(routes: Array[EventRoute]) {
   def accept(p: Payload): Unit = {
     var i = 0
     while (i < routes.length) {
@@ -158,6 +165,5 @@ private class Router(routes: Array[Route]) extends Route {
   }
 }
 
-private trait Route {
-  def accept(p: Payload): Unit
-}
+
+

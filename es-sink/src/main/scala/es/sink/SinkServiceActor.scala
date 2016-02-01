@@ -1,14 +1,17 @@
 package es.sink
 
-import akka.actor.ActorRef
-import com.typesafe.config.Config
+import akka.actor.{Stash, ActorRef}
+import com.typesafe.config.{ConfigFactory, Config}
 import es.model.{StringPayload, Payload}
 import es.sink.MediaManagerActor.{SubscriptionRef, StartSubscription}
 import es.sink.SinkServiceActor.{Started, Data, Starting}
+import rs.core.{Subject, TopicKey}
 import rs.core.actors.ActorState
 import rs.core.config.ConfigOps.wrap
 import rs.core.evt.EvtSource
 import rs.core.services.StatefulServiceActor
+
+import scala.util.{Success, Try}
 
 object SinkServiceActor {
 
@@ -23,7 +26,7 @@ object SinkServiceActor {
 
 }
 
-class SinkServiceActor(id: String, sinkCfg: Config, mediaManager: ActorRef) extends StatefulServiceActor[Data](id) {
+class SinkServiceActor(id: String, sinkCfg: Config, mediaManager: ActorRef) extends StatefulServiceActor[Data](id) with Stash {
   override val evtSource: EvtSource = "Sink." + id
   import es.sink.SinkServiceActor.Internal._
 
@@ -40,12 +43,17 @@ class SinkServiceActor(id: String, sinkCfg: Config, mediaManager: ActorRef) exte
       stay()
     case Event(SubscriptionRef(ref), data) =>
       transitionTo(Started) using data.copy(subRef = Some(context.watch(ref)))
+    case Event(x: AddRoute, _) => stash(); stay()
   }
 
   var c = 0L
   var last = 0L
 
   when(Started) {
+    case Event(cmd: AddRoute, data) =>
+      val route = EventRoute(cmd.cfg)
+      data.subRef.foreach(_ ! route)
+      stay()
     case Event(StringPayload(ts, meta, data), _) =>
       c += 1
 
@@ -60,5 +68,22 @@ class SinkServiceActor(id: String, sinkCfg: Config, mediaManager: ActorRef) exte
       stay()
   }
 
+  val tempRouteCfg =
+    """
+      |type=console
+      |filter.tags=t1,t2
+    """.stripMargin
+  onSignal {
+    case (Subject(_, TopicKey("addRoute"), _), s: String) =>
+      Try(ConfigFactory.parseString(s)) match {
+        case Success(cfg) =>
+          self ! AddRoute(cfg)
+          SignalOk()
+        case _ => SignalFailed()
+      }
+  }
+
+
+  case class AddRoute(cfg: Config)
 
 }

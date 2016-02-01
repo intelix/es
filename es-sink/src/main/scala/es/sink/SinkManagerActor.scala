@@ -28,7 +28,7 @@ class SinkManagerActor(id: String) extends StatelessServiceActor(id) {
     case _ => Restart
   }
 
-  val mediaManager = context.actorOf(Props(classOf[MediaManagerActor], serviceCfg))
+  val mediaManager = context.actorOf(Props(classOf[MediaManagerActor]))
 
   var sinks: Map[String, ActorRef] = Map()
 

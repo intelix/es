@@ -59,6 +59,12 @@ class MediaManagerActor() extends StatelessActor {
   val cleaner = context.actorOf(Props[AeronDirectoryCleaner])
   cleaner ! dir
 
+  try {
+    FileUtils.writeStringToFile(refFile, dir)
+  } catch {
+    case _: Throwable => raise(CommonEvt.EvtError, 'msg -> s"Unable to write to: ${SinkClient.ReferenceFilename}")
+  }
+
   onMessage {
     case StartSubscription(channel, sId, target) => sender ! SubscriptionRef(context.actorOf(Props(classOf[MediaSubscriptionActor], aeron, channel, sId, target), nameFor(sId)))
   }
@@ -81,7 +87,7 @@ object AeronDirectoryCleaner {
 
     case object DirectoryRemoved extends TraceE
 
-    case object UnableToRemoveDirectory extends WarningE
+    case object UnableToRemoveDirectory extends TraceE
 
   }
 
@@ -143,7 +149,7 @@ private class AeronDirectoryCleaner extends StatelessActor {
     try {
       FileUtils.writeLines(refFileUnused, pendingDeletion)
     } catch {
-      case _: Throwable => raise(CommonEvt.EvtWarning, 'msg -> "Unable to write into reference file", 'file -> refFileUnused.getAbsolutePath)
+      case _: Throwable => raise(CommonEvt.EvtWarning, 'msg -> s"Unable to write to: ${refFileUnused.getAbsolutePath}")
     }
   }
 

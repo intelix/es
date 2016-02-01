@@ -1,10 +1,10 @@
 package es.sink
 
 import java.util.concurrent.TimeUnit._
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicReference, AtomicBoolean}
 
 import akka.actor.ActorRef
-import es.model.StringPayload
+import es.model.{Payload, StringPayload}
 import rs.core.actors.StatelessActor
 import rs.core.evt.{EvtSource, InfoE, TraceE}
 import uk.co.real_logic.aeron.logbuffer.{FragmentHandler, Header}
@@ -39,7 +39,7 @@ object MediaSubscriptionActor {
 
 }
 
-class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, target: ActorRef) extends StatelessActor {
+class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) extends StatelessActor {
 
   import MediaSubscriptionActor._
   import Internal._
@@ -51,6 +51,10 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
   val idleStrategy = new BackoffIdleStrategy(100000, 30, MICROSECONDS.toNanos(1), MICROSECONDS.toNanos(100))
 
   val running = new AtomicBoolean(true)
+
+  val router = new AtomicReference[Router](Router())
+
+  def forwardPayload(p: Payload) = router.get().accept(p)
 
 
   private def cloneData(directBuffer: DirectBuffer, offset: Int, length: Int) = {
@@ -96,7 +100,7 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
           val tsShift = directBuffer.getShort(offset + 17)
           val ts = meta.tsBase + tsShift
           val str = cloneDataAsString(directBuffer, offset + 17 + 2, length - 17 - 2)
-          target ! StringPayload(ts, meta.tags, str)
+          forwardPayload(StringPayload(ts, meta.tags, str))
           raise(Evt.DataReceived, 'id -> id, 'type -> 1, 'contents -> str)
         case 2 if maybeMeta.isDefined =>
           val meta = maybeMeta.get
@@ -107,7 +111,7 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
           val str = cloneDataAsString(directBuffer, offset + 17 + 2 + 2 + tagsLen, length - (17 + 2 + 2 + tagsLen))
           var allTags = meta.tags
           tags.split('\t').foreach(allTags +:= _)
-          target ! StringPayload(ts, allTags, str)
+          forwardPayload(StringPayload(ts, allTags, str))
           raise(Evt.DataReceived, 'id -> id, 'type -> 2, 'contents -> str, 'tags -> allTags)
         case 1 => raise(Evt.DataIgnored, 'id -> id, 'type -> 1, 'reason -> "Meta pending")
         case 2 => raise(Evt.DataIgnored, 'id -> id, 'type -> 2, 'reason -> "Meta pending")
@@ -136,4 +140,24 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int, targe
 
 private class Worker(running: AtomicBoolean, sub: Subscription, idleStrategy: IdleStrategy, fragmentHandler: FragmentHandler, fragmentLimitCount: Int) extends Runnable {
   override def run(): Unit = while (running.get()) idleStrategy.idle(sub.poll(fragmentHandler, fragmentLimitCount))
+}
+
+
+private object Router {
+  def apply(): Router = new Router(Array())
+  def apply(routes: Array[Route]): Router = new Router(routes)
+}
+
+private class Router(routes: Array[Route]) extends Route {
+  def accept(p: Payload): Unit = {
+    var i = 0
+    while (i < routes.length) {
+      routes(i).accept(p)
+      i += 1
+    }
+  }
+}
+
+private trait Route {
+  def accept(p: Payload): Unit
 }

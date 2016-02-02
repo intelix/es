@@ -66,7 +66,7 @@ class MediaManagerActor() extends StatelessActor {
   }
 
   onMessage {
-    case StartSubscription(channel, sId, target) => sender ! SubscriptionRef(context.actorOf(Props(classOf[MediaSubscriptionActor], aeron, channel, sId, target), nameFor(sId)))
+    case StartSubscription(channel, sId, target) => sender ! SubscriptionRef(context.actorOf(Props(classOf[MediaSubscriptionActor], aeron, channel, sId), nameFor(sId)))
   }
 
   def nameFor(sId: Int) = "stream-" + sId

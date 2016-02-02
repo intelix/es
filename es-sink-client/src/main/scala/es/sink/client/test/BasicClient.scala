@@ -54,7 +54,7 @@ object BasicClient extends App {
         maxMessageLength = None,
         meta = SinkSessionMeta("a=1", "b=abc", "id=" + id)))
 
-    override def publish(level: String, v: String): Int = conn.postWithTags(v, "level=" + level)
+    override def publish(level: String, v: String): Int = conn.postWithTags(v, "level=" + level, "t1")
   }
 
 

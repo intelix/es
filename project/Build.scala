@@ -12,7 +12,7 @@ private object Settings {
   val aeronVersion = "0.9"
   val scalaLoggingVersion = "3.1.0"
   val logbackVersion = "1.1.2"
-
+  val akkaStreamVersion = "2.0.1"
 
   val rsNode = "au.com.intelix" %% "rs-core-node" % rsVersion
   val rsAuth = "au.com.intelix" %% "rs-auth" % rsVersion
@@ -20,6 +20,7 @@ private object Settings {
   val rsWebClient = "au.com.intelix" %% "rs-core-js" % rsVersion
   val loggingScala      = "com.typesafe.scala-logging"  %% "scala-logging"                  % scalaLoggingVersion
   val loggingLogback    = "ch.qos.logback"              %  "logback-classic"                % logbackVersion
+  val akkaStreams       = "com.typesafe.akka"           %% "akka-stream-experimental"       % akkaStreamVersion
 
   val aeron = "uk.co.real-logic" % "aeron-all" % aeronVersion
 
@@ -116,7 +117,7 @@ object Build {
   )
 
   lazy val sink = Seq(
-    libraryDependencies += aeron
+    libraryDependencies ++= List(aeron, akkaStreams)
   )
 
 

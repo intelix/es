@@ -1,6 +1,7 @@
 package es.sink
 
 import java.util.concurrent.TimeUnit._
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import java.util.concurrent.atomic.{AtomicReference, AtomicBoolean}
 
 import akka.actor.ActorRef
@@ -17,7 +18,9 @@ object MediaSubscriptionActor {
 
   private object Internal {
 
-    case class Id(ms: Long, ls: Long)
+    case class Id(ms: Long, ls: Long) {
+      override lazy val toString: String = (1 + ms.signum) + java.lang.Long.toString(ms.abs, 36) + "_" + (1 + ls.signum) + java.lang.Long.toString(ls.abs, 36)
+    }
 
     case class Meta(tsBase: Long, tags: List[String])
 
@@ -39,6 +42,7 @@ object MediaSubscriptionActor {
 
 }
 
+
 class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) extends StatelessActor {
 
   import MediaSubscriptionActor._
@@ -52,10 +56,12 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
 
   val running = new AtomicBoolean(true)
 
-  val router = new AtomicReference[Router](Router())
+  private val router = new AtomicReference[Router](Router())
   var routes = List[EventRoute]()
 
   def forwardPayload(p: Payload) = router.get().accept(p)
+
+
 
 
   private def cloneData(directBuffer: DirectBuffer, offset: Int, length: Int) = {
@@ -129,13 +135,18 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
   raise(Evt.StartingSubscription, 'channel -> channel, 'streamId -> streamId)
 
   @throws[Exception](classOf[Exception]) override
-  def preStart(): Unit = pollingThread.start()
+  def preStart(): Unit = {
+    super.preStart()
+    pollingThread.start()
+  }
 
   @throws[Exception](classOf[Exception]) override
   def postStop(): Unit = {
+    super.postStop()
     running.set(false)
     CloseHelper.quietClose(subscription)
   }
+
 
   onMessage {
     case r: EventRoute =>

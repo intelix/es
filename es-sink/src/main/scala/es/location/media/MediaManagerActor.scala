@@ -1,6 +1,7 @@
-package es.sink
+package es.location.media
 
 import akka.actor.{ActorRef, Props}
+import es.location.media.sub.MediaSubscriptionActor
 import es.sink.client.SinkClient
 import org.apache.commons.io.FileUtils
 import rs.core.actors.StatelessActor
@@ -50,6 +51,8 @@ class MediaManagerActor() extends StatelessActor {
   val driver = MediaDriver.launchEmbedded(mediaCtx)
   val dir = mediaCtx.aeronDirectoryName()
 
+  var liveSubscriptions = Map[SubscriptionId, ActorRef]()
+
   raise(Evt.MediaDriverStarted, 'dir -> dir)
 
   val ctx = new Aeron.Context
@@ -66,7 +69,13 @@ class MediaManagerActor() extends StatelessActor {
   }
 
   onMessage {
-    case StartSubscription(channel, sId, target) => sender ! SubscriptionRef(context.actorOf(Props(classOf[MediaSubscriptionActor], aeron, channel, sId), nameFor(sId)))
+    case StartSubscription(channel, sId, target) =>
+      val key = SubscriptionId(channel, sId)
+      sender ! liveSubscriptions.getOrElse(key, {
+        val ref = context.actorOf(Props(classOf[MediaSubscriptionActor], aeron, channel, sId), nameFor(sId))
+        liveSubscriptions += key -> ref
+        ref
+      })
   }
 
   def nameFor(sId: Int) = "stream-" + sId
@@ -76,6 +85,8 @@ class MediaManagerActor() extends StatelessActor {
     CloseHelper.quietClose(driver)
     raise(Evt.MediaDriverStopped)
   }
+
+  case class SubscriptionId(channel: String, streamId: Int)
 
 }
 

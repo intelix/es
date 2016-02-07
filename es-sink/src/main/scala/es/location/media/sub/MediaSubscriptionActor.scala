@@ -1,11 +1,10 @@
-package es.sink
+package es.location.media.sub
 
 import java.util.concurrent.TimeUnit._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import java.util.concurrent.atomic.{AtomicReference, AtomicBoolean}
 
-import akka.actor.ActorRef
 import es.model.{Payload, StringPayload}
+import es.sink.{RouteHandle, EventRoute}
 import rs.core.actors.StatelessActor
 import rs.core.evt.{EvtSource, InfoE, TraceE}
 import uk.co.real_logic.aeron.logbuffer.{FragmentHandler, Header}
@@ -15,6 +14,11 @@ import uk.co.real_logic.agrona.{CloseHelper, DirectBuffer}
 
 
 object MediaSubscriptionActor {
+
+  object Msg {
+    case class AddRoute(handle: RouteHandle)
+    case class RemoveRoute(handle: RouteHandle)
+  }
 
   private object Internal {
 

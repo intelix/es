@@ -1,27 +1,28 @@
-package es.sink
+package es.location
 
 import akka.actor.SupervisorStrategy.Restart
-import akka.actor.{OneForOneStrategy, SupervisorStrategy, ActorRef, Props}
+import akka.actor.{ActorRef, OneForOneStrategy, Props}
 import com.typesafe.config.ConfigFactory
-import es.sink.MediaManagerActor.StartSubscription
+import es.location.media.MediaManagerActor
+import es.location.sink.SinkServiceActor
 import rs.core.config.ConfigOps.wrap
-import rs.core.services.internal.InternalMessages.SignalPayload
-import rs.core.utils.UUIDTools
-import rs.core.{ServiceKey, TopicKey, Subject}
 import rs.core.evt.EvtSource
 import rs.core.services.StatelessServiceActor
+import rs.core.services.internal.InternalMessages.SignalPayload
+import rs.core.utils.UUIDTools
+import rs.core.{ServiceKey, Subject, TopicKey}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 
 
-object SinkManagerActor {
+object LocationManagerActor {
 
 }
 
-class SinkManagerActor(id: String) extends StatelessServiceActor(id) {
-  override val evtSource: EvtSource = "SinkManager"
+class LocationManagerActor(id: String) extends StatelessServiceActor(id) {
+  override val evtSource: EvtSource = "LocationManager"
 
 
   override def supervisorStrategy = OneForOneStrategy(9999, 5 minutes) {

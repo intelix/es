@@ -8,11 +8,11 @@ import sbt._
 
 private object Settings {
 
-  val rsVersion = "0.1.2_9-SNAPSHOT"
+  val rsVersion = "0.1.2_10-SNAPSHOT"
   val aeronVersion = "0.9"
   val scalaLoggingVersion = "3.1.0"
   val logbackVersion = "1.1.2"
-  val akkaStreamVersion = "2.0.1"
+  val akkaStreamVersion = "2.0.2"
 
   val rsNode = "au.com.intelix" %% "rs-core-node" % rsVersion
   val rsAuth = "au.com.intelix" %% "rs-auth" % rsVersion

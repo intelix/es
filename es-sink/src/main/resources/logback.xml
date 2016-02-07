@@ -34,12 +34,17 @@
         </layout>
     </appender>
 
+
+
     <logger name="events" level="INFO" additivity="false">
         <appender-ref ref="Events" />
     </logger>
     <logger name="exceptions" level="INFO" additivity="false">
         <appender-ref ref="Exceptions" />
     </logger>
+
+    <logger name="akka" level="ERROR" />
+
 
     <root level="INFO">
         <appender-ref ref="StdOut" />

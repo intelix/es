@@ -4,7 +4,7 @@ import java.util.concurrent.TimeUnit._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 import es.model.{Payload, StringPayload}
-import es.sink.{RouteHandle, EventRoute}
+import es.sink.EventProcessor
 import rs.core.actors.StatelessActor
 import rs.core.evt.{EvtSource, InfoE, TraceE}
 import uk.co.real_logic.aeron.logbuffer.{FragmentHandler, Header}
@@ -16,8 +16,11 @@ import uk.co.real_logic.agrona.{CloseHelper, DirectBuffer}
 object MediaSubscriptionActor {
 
   object Msg {
-    case class AddRoute(handle: RouteHandle)
-    case class RemoveRoute(handle: RouteHandle)
+
+    case class AddRoute(handle: EventProcessor)
+
+    case class RemoveRoute(handle: EventProcessor)
+
   }
 
   private object Internal {
@@ -61,11 +64,9 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
   val running = new AtomicBoolean(true)
 
   private val router = new AtomicReference[Router](Router())
-  var routes = List[EventRoute]()
+  var routes = List[EventProcessor]()
 
   def forwardPayload(p: Payload) = router.get().accept(p)
-
-
 
 
   private def cloneData(directBuffer: DirectBuffer, offset: Int, length: Int) = {
@@ -153,8 +154,12 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
 
 
   onMessage {
-    case r: EventRoute =>
+    case Msg.AddRoute(r) =>
+      log.info(s"!>>> Adding route: $r")
       routes +:= r
+      router.set(Router(routes))
+    case Msg.RemoveRoute(r) =>
+      routes = routes.filter(_ != r)
       router.set(Router(routes))
   }
 
@@ -167,10 +172,11 @@ private class Worker(running: AtomicBoolean, sub: Subscription, idleStrategy: Id
 
 private object Router {
   def apply(): Router = new Router(Array())
-  def apply(routes: List[EventRoute]): Router = new Router(routes.toArray)
+
+  def apply(routes: List[EventProcessor]): Router = new Router(routes.toArray)
 }
 
-private class Router(routes: Array[EventRoute]) {
+private class Router(routes: Array[EventProcessor]) {
   def accept(p: Payload): Unit = {
     var i = 0
     while (i < routes.length) {

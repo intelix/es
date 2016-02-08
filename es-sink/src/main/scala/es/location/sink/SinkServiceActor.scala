@@ -4,16 +4,14 @@ import akka.actor.{ActorRef, Props}
 import com.typesafe.config.Config
 import es.location.media.MediaManagerActor.{StartSubscription, SubscriptionRef}
 import es.location.sink.route.FlowRouteActor
-import es.sink.EventRoute
 import rs.core.actors.ActorState
 import rs.core.config.ConfigOps.wrap
 import rs.core.evt.EvtSource
 import rs.core.services.StatelessServiceActor
-import rs.core.utils.UUIDTools
 
 object SinkServiceActor {
 
-  case class RouteRef(id: String = UUIDTools.generateShortUUID, instance: EventRoute)
+  //  case class RouteRef(id: String = UUIDTools.generateShortUUID, instance: EventRoute)
 
   case object Starting extends ActorState
 
@@ -26,8 +24,8 @@ class SinkServiceActor(id: String, sinkCfg: Config, mediaManager: ActorRef) exte
 
   implicit val sys = context.system
 
-  //  val channel = sinkCfg.asString("aeron.channel", "udp://localhost:40123")
-  val channel = sinkCfg.asString("aeron.channel", "aeron:ipc")
+    val channel = sinkCfg.asString("aeron.channel", "udp://localhost:40123")
+//  val channel = sinkCfg.asString("aeron.channel", "aeron:ipc")
   val streamId = sinkCfg.asInt("aeron.stream-id", 1)
 
   mediaManager ! StartSubscription(channel, streamId, self)

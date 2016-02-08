@@ -25,7 +25,7 @@ object BasicClient extends App {
         val started = System.nanoTime()
         val res = pub.publish("info", "From thread 1: " + i)
         val diff = System.nanoTime() - started
-        println("From thread 1 = " + res + " nanos: " + diff)
+        println("From thread 1 = " + res + " i: " + i + " nanos: " + diff)
         Thread.sleep(1000)
       }
     }
@@ -46,8 +46,8 @@ object BasicClient extends App {
 
     val conn = SinkClient()
       .connect(SinkConnectionConfig(
-        //        channel = "udp://localhost:40123",
-        channel = "aeron:ipc",
+                channel = "udp://localhost:40123",
+//        channel = "aeron:ipc",
         streamId = 1,
 //        backpressureStrategy = RetryThenDrop(100, new BackoffIdleStrategy(100000, 30, MICROSECONDS.toNanos(1), MICROSECONDS.toNanos(100))),
         backpressureStrategy = Drop,

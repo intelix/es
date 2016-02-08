@@ -36,17 +36,17 @@
 
 
 
-    <logger name="events" level="INFO" additivity="false">
+    <logger name="events" level="DEBUG" additivity="false">
         <appender-ref ref="Events" />
     </logger>
     <logger name="exceptions" level="INFO" additivity="false">
         <appender-ref ref="Exceptions" />
     </logger>
 
-    <logger name="akka" level="ERROR" />
+    <logger name="akka" level="DEBUG" />
 
 
-    <root level="INFO">
+    <root level="DEBUG">
         <appender-ref ref="StdOut" />
     </root>
 

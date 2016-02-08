@@ -1,6 +1,7 @@
 package es.location.media
 
 import akka.actor.{ActorRef, Props}
+import es.location.media.MediaManagerActor.SubscriptionRef
 import es.location.media.sub.MediaSubscriptionActor
 import es.sink.client.SinkClient
 import org.apache.commons.io.FileUtils
@@ -28,6 +29,10 @@ object MediaManagerActor {
     case object MediaDriverStarted extends InfoE
 
     case object MediaDriverStopped extends InfoE
+
+    case object DirectoryRemoved extends TraceE
+
+    case object UnableToRemoveDirectory extends TraceE
 
   }
 
@@ -58,9 +63,9 @@ class MediaManagerActor() extends StatelessActor {
   val ctx = new Aeron.Context
   ctx.aeronDirectoryName(dir)
   val aeron = Aeron.connect(ctx)
-
-  val cleaner = context.actorOf(Props[AeronDirectoryCleaner])
-  cleaner ! dir
+  val aeronDirectoryCleanupEnabled = config.asBoolean("sink.aeron.media.auto-cleanup", defaultValue = true)
+  val refFileUnused = new java.io.File(SinkClient.ReferenceFilename + ".old")
+  storePending(deletePending(Try(FileUtils.readLines(refFileUnused).toList).toOption.getOrElse(List())) :+ dir)
 
   try {
     FileUtils.writeStringToFile(refFile, dir)
@@ -71,11 +76,12 @@ class MediaManagerActor() extends StatelessActor {
   onMessage {
     case StartSubscription(channel, sId, target) =>
       val key = SubscriptionId(channel, sId)
-      sender ! liveSubscriptions.getOrElse(key, {
+      sender ! SubscriptionRef(liveSubscriptions.getOrElse(key, {
         val ref = context.actorOf(Props(classOf[MediaSubscriptionActor], aeron, channel, sId), nameFor(sId))
         liveSubscriptions += key -> ref
+        println(s"!>>> Started $key -> $ref")
         ref
-      })
+      }))
   }
 
   def nameFor(sId: Int) = "stream-" + sId
@@ -86,54 +92,15 @@ class MediaManagerActor() extends StatelessActor {
     raise(Evt.MediaDriverStopped)
   }
 
-  case class SubscriptionId(channel: String, streamId: Int)
-
-}
-
-
-object AeronDirectoryCleaner {
-
-  object Evt {
-    val SourceId = MediaManagerActor.Evt.SourceId + ".Cleaner"
-
-    case object DirectoryRemoved extends TraceE
-
-    case object UnableToRemoveDirectory extends TraceE
-
-  }
-
-}
-
-private class AeronDirectoryCleaner extends StatelessActor {
-
-  import AeronDirectoryCleaner._
-
-  override val evtSource: EvtSource = Evt.SourceId
-
-  val aeronDirectoryCleanupEnabled = config.asBoolean("sink.aeron.media.auto-cleanup", defaultValue = true)
-
-  val refFileUnused = new java.io.File(SinkClient.ReferenceFilename + ".old")
-
-  var pendingDeletion: List[String] = Try(FileUtils.readLines(refFileUnused).toList).toOption.getOrElse(List())
-
-  if (aeronDirectoryCleanupEnabled) scheduleOnce(5 seconds, Cleanup)
-
-  Runtime.getRuntime.addShutdownHook(new Thread() {
-    override def run(): Unit = {
-      deletePending()
+  private def storePending(list: List[String]) = {
+    try {
+      FileUtils.writeLines(refFileUnused, list)
+    } catch {
+      case _: Throwable => raise(CommonEvt.EvtWarning, 'msg -> s"Unable to write to: ${refFileUnused.getAbsolutePath}")
     }
-  })
-
-
-  onMessage {
-    case dir: String => addToPending(dir)
-    case Cleanup =>
-      deletePending()
-      if (pendingDeletion.nonEmpty) scheduleOnce(30 seconds, Cleanup)
   }
-
-  private def deletePending() = if (aeronDirectoryCleanupEnabled) {
-    pendingDeletion = pendingDeletion.filter { case nextDirName =>
+  private def deletePending(list: List[String]): List[String] =
+    if (!aeronDirectoryCleanupEnabled) list else list.filter { case nextDirName =>
       val fd = new java.io.File(nextDirName)
       if (fd.isDirectory) {
         try {
@@ -147,23 +114,14 @@ private class AeronDirectoryCleaner extends StatelessActor {
         }
       } else false
     }
-    storePending()
-
-  }
-
-  private def addToPending(dir: String) = {
-    pendingDeletion +:= dir
-    storePending()
-  }
-
-  private def storePending() = {
-    try {
-      FileUtils.writeLines(refFileUnused, pendingDeletion)
-    } catch {
-      case _: Throwable => raise(CommonEvt.EvtWarning, 'msg -> s"Unable to write to: ${refFileUnused.getAbsolutePath}")
-    }
-  }
 
   case object Cleanup
 
+
+
+  case class SubscriptionId(channel: String, streamId: Int)
+
 }
+
+
+

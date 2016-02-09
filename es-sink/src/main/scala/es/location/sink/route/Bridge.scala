@@ -9,7 +9,7 @@ import uk.co.real_logic.agrona.concurrent.BackoffIdleStrategy
 
 import scala.annotation.tailrec
 import scala.concurrent.duration._
-
+import scala.language.existentials
 
 class Bridge extends Publisher[Payload] with EventProcessor {
   private val subscribers = new AtomicReference[Array[SubscriberSession]](Array())

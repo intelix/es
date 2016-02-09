@@ -44,6 +44,7 @@ class SinkServiceActor(id: String, sinkCfg: Config, mediaManager: ActorRef) exte
       subscriptionRef = Some(ref)
       activeRoutes.values.foreach(_ ! FlowRouteActor.Msg.Plug(ref))
     case RouteSourceApi.ApplyRouteConfig(rId, cfg, on, criteria) if isApplicable(criteria) =>
+      println(s"!>>> ApplyRouteConfig($rId, $cfg)")
       activeRoutes.getOrElse(rId, {
         val ref = context.watch(context.actorOf(Props(classOf[FlowRouteActor], rId), rId))
         subscriptionRef.foreach(ref ! FlowRouteActor.Msg.Plug(_))
@@ -51,7 +52,9 @@ class SinkServiceActor(id: String, sinkCfg: Config, mediaManager: ActorRef) exte
         ref
       }) ! FlowRouteActor.Msg.Configure(cfg, on)
     case x: RouteSourceApi.ApplyRouteConfig => // ignored
-    case RouteSourceApi.RemoveRoute(rId) => activeRoutes.get(rId).foreach(_ ! FlowRouteActor.Msg.Delete)
+    case RouteSourceApi.RemoveRoute(rId) =>
+      activeRoutes.get(rId).foreach(_ ! FlowRouteActor.Msg.Delete)
+      activeRoutes -= rId
   }
 
   private def isApplicable(c: Option[String]) = true // TODO

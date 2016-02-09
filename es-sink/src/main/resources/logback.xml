@@ -43,7 +43,7 @@
         <appender-ref ref="Exceptions" />
     </logger>
 
-    <logger name="akka" level="DEBUG" />
+    <logger name="akka" level="ERROR" />
 
 
     <root level="DEBUG">

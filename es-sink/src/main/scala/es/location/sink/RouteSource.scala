@@ -15,7 +15,8 @@ trait RouteSource extends Terminal {
 
   onSetRecord {
     case (Subject(ServiceKey("es-routes"), TopicKey("routes-list"), _), set) =>
-      val current = set.asInstanceOf[Set[String]]
+      val current = set.map(_.toString)
+      println(s"!>>>> Received new list: $set, current: $current")
       (current diff activeRouteIds).foreach(add)
       (activeRouteIds diff current).foreach(remove)
   }
@@ -30,10 +31,12 @@ trait RouteSource extends Terminal {
 
   private def add(id: String) = {
     subscribeToRouteConfig(id)
+    println(s"!>>> Subscribed to $id")
     activeRouteIds += id
   }
 
   private def remove(id: String) = {
+    println(s"!>>> Unsubscribed from $id")
     unsubscribeFromRouteConfig(id)
     activeRouteIds -= id
     self ! RouteSourceApi.RemoveRoute(id)

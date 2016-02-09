@@ -1,10 +1,13 @@
 package es.location.sink.route
 
-import akka.actor.{ActorRef, Props, Terminated}
+import java.util.concurrent.atomic.AtomicReference
+
+import akka.actor.{FSM, ActorRef, Props, Terminated}
 import com.typesafe.config.{Config, ConfigFactory}
 import es.location.media.sub.MediaSubscriptionActor
 import es.location.sink.SinkServiceActor.Started
 import es.location.sink.route.FlowRouteActor.Data
+import es.model.Payload
 import es.sink.EventProcessor
 import rs.core.actors.{ActorState, StatefulActor}
 import rs.core.config.ConfigOps.wrap
@@ -28,7 +31,7 @@ object FlowRouteActor {
                    mediaSub: Option[ActorRef],
                    cfg: Option[String] = None,
                    routeHandlerRef: Option[ActorRef] = None,
-                   eventProcessorHandle: Option[EventProcessor] = None,
+                   eventProcessorProxy: Option[Processor] = None,
                    lastError: Option[String] = None,
                    autoStartWith: Option[Msg.Configure] = None)
 
@@ -54,18 +57,34 @@ object FlowRouteActor {
 
 }
 
+
+class Processor extends EventProcessor {
+
+  private val ref = new AtomicReference[EventProcessor]()
+
+  override def accept(p: Payload): Boolean = {
+    val r = ref.get()
+    if ( r != null ) r.accept(p) else true
+  }
+
+  private[route] def linkWith(p: EventProcessor) = ref.set(p)
+  private[route] def unlink() = ref.set(null)
+
+}
+
 class FlowRouteActor(routeId: String) extends StatefulActor[Data] {
 
   println(s"!>>> Started FlowRouteActor : $routeId")
 
   import FlowRouteActor._
 
-  override val evtSource: EvtSource = Evt.SourceId
+  override val evtSource: EvtSource = Evt.SourceId + "." + routeId
 
   startWith(States.Unconfigured, Data(mediaSub = None))
 
   when(States.Unconfigured)(PartialFunction.empty)
   when(States.Failed)(PartialFunction.empty)
+  when(States.Stopped)(PartialFunction.empty)
 
   when(States.Starting) {
     case Event(m: Msg.Configure, d) =>
@@ -75,20 +94,28 @@ class FlowRouteActor(routeId: String) extends StatefulActor[Data] {
     case Event(Terminated(ref), d) if d.routeHandlerRef.contains(ref) =>
       println(s"!>>> Terminated: $ref")
       transitionTo(States.Failed) using d.copy(routeHandlerRef = None)
-    case Event(HandlerApi.Started(h), d) => transitionTo(States.Started) using d.copy(eventProcessorHandle = Some(h))
+    case Event(HandlerApi.Started(h), d) =>
+      d.eventProcessorProxy.foreach(_.linkWith(h))
+      transitionTo(States.Started)
   }
 
   when(States.Started) {
+    case Event(Msg.Plug(ref), d) =>
+      d.eventProcessorProxy.foreach(ref ! MediaSubscriptionActor.Msg.AddRoute(_))
+      stay() using d.copy(mediaSub = Some(ref))
     case Event(IntMsg.Stop(r), d) =>
       d.routeHandlerRef.foreach(_ ! Msg.TerminateRoute)
       transitionTo(States.Stopping)
     case Event(HandlerApi.Pending, d) =>
-      transitionTo(States.Starting) using d.copy(eventProcessorHandle = None)
+      d.eventProcessorProxy.foreach(_.unlink())
+      transitionTo(States.Starting)
   }
 
   when(States.Stopping) {
     case Event(m: Msg.Configure, d) => stay() using d.copy(autoStartWith = Some(m))
-    case Event(IntMsg.Stopped(r), d) => transitionTo(States.Stopped) using d.copy(eventProcessorHandle = None, lastError = None)
+    case Event(IntMsg.Stopped(r), d) =>
+      d.eventProcessorProxy.foreach(_.unlink())
+      transitionTo(States.Stopped) using d.copy(lastError = None)
     case Event(IntMsg.FailedToStop(r, f), d) =>
       println(s"!>>> FailedToStop: $r $f")
 
@@ -97,8 +124,6 @@ class FlowRouteActor(routeId: String) extends StatefulActor[Data] {
 
   otherwise {
     case Event(Msg.Plug(ref), d) =>
-      log.info(s"!>>> Ready to plug to $ref")
-      d.eventProcessorHandle.foreach(ref ! MediaSubscriptionActor.Msg.AddRoute(_))
       stay() using d.copy(mediaSub = Some(ref))
     case Event(Msg.Configure(cfg, false), _) => stay()
     case Event(Msg.Configure(cfg, true), d) =>
@@ -108,8 +133,13 @@ class FlowRouteActor(routeId: String) extends StatefulActor[Data] {
           println(s"!>>> bad cfg: $routeId [$routeCfg]")
 
           transitionTo(States.Failed) using d.copy(cfg = Some(cfg), lastError = Some("Invalid type"))
-        case Some(props) => transitionTo(States.Starting) using d.copy(routeHandlerRef = Some(context.watch(context.actorOf(props))))
+        case Some(props) => transitionTo(States.Starting) using d.copy(routeHandlerRef = Some(context.watch(context.actorOf(props))), eventProcessorProxy = Some(new Processor))
       }
+    case Event(Msg.Delete, d) =>
+      println("!>>> STOPPING")
+      d.routeHandlerRef.foreach(context.stop)
+      unlink(d)
+      stop(FSM.Normal)
   }
 
   onTransition {
@@ -119,9 +149,11 @@ class FlowRouteActor(routeId: String) extends StatefulActor[Data] {
   }
 
   onTransition {
-    case States.Started -> _ => for (mRef <- stateData.mediaSub; route <- stateData.eventProcessorHandle) mRef ! MediaSubscriptionActor.Msg.RemoveRoute(route)
-    case _ -> States.Started => for (mRef <- nextStateData.mediaSub; route <- nextStateData.eventProcessorHandle) mRef ! MediaSubscriptionActor.Msg.AddRoute(route)
+    case States.Started -> _ => unlink(stateData)
+    case _ -> States.Started => for (mRef <- nextStateData.mediaSub; route <- nextStateData.eventProcessorProxy) mRef ! MediaSubscriptionActor.Msg.AddRoute(route)
   }
+
+  private def unlink(stateData: Data) = for (mRef <- stateData.mediaSub; route <- stateData.eventProcessorProxy) mRef ! MediaSubscriptionActor.Msg.RemoveRoute(route)
 
   private def routeTypeToHandlerActorProps(id: String, cfg: Config): Option[Props] =
     cfg.asOptString("type").flatMap { t => config.asOptProps("es.eventProcessorHandle.handler." + t, id, cfg) }

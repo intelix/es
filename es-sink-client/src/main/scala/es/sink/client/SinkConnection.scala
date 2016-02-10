@@ -46,8 +46,8 @@ private[client] class AeronSinkConnection(cfg: SinkConnectionConfig, proxy: Publ
   val IdHeaderSize = 16
   val MsgTypeSize = 1
 
-  val MetaHeaderSize = 8
-  val DataHeaderSize = 2
+  val MetaHeaderSize = 8 + 8
+  val DataHeaderSize = 2 + 4
 
   val PayloadIdx = IdHeaderSize + MsgTypeSize
 
@@ -94,6 +94,8 @@ private[client] class AeronSinkConnection(cfg: SinkConnectionConfig, proxy: Publ
     }
   })
 
+  var sequence = 0L
+
   var metaPublishedAt = 0L
 
   val DataWindowMs = 30000 // value should not exceed Short.MaxValue
@@ -102,13 +104,15 @@ private[client] class AeronSinkConnection(cfg: SinkConnectionConfig, proxy: Publ
 
 
   def meta(ts: Long) = {
-    MetaBuffer.putLong(IdHeaderSize + MsgTypeSize, ts)
+    MetaBuffer.putLong(PayloadIdx, ts)
+    MetaBuffer.putLong(PayloadIdx + 8, sequence)
     MetaBuffer
   }
 
   private def tsShift(tsBase: Long): Short = (System.currentTimeMillis() - tsBase).toShort
 
   override def post(v: String): Int = {
+    sequence += 1
     offerMeta() match {
       case (PostSucceeded, tsBase) =>
         val bs = v.getBytes("UTF-8")
@@ -117,6 +121,7 @@ private[client] class AeronSinkConnection(cfg: SinkConnectionConfig, proxy: Publ
         val buff = bufferOfDim(payloadLen + DataHeaderSize)
         putMsgType(1, buff)
         buff.putShort(PayloadIdx, tsShift(tsBase))
+        buff.putInt(PayloadIdx + 2, (sequence & 0x7fffffff).toInt)
         buff.putBytes(DataPayloadIdx, bs)
         offerData(buff, payloadLen + DataPayloadIdx)
       case (res, _) => res
@@ -124,6 +129,7 @@ private[client] class AeronSinkConnection(cfg: SinkConnectionConfig, proxy: Publ
   }
 
   override def postWithTags(v: String, tags: String*): Int = {
+    sequence += 1
     offerMeta() match {
       case (PostSucceeded, tsBase) =>
         if (tagsContainIllegalChar(tags)) return PostFailedIllegalTag
@@ -135,6 +141,7 @@ private[client] class AeronSinkConnection(cfg: SinkConnectionConfig, proxy: Publ
         val buff = bufferOfDim(payloadLen + DataHeaderSize)
         putMsgType(2, buff)
         buff.putShort(PayloadIdx, tsShift(tsBase))
+        buff.putInt(PayloadIdx + 2, (sequence & 0x7fffffff).toInt)
         buff.putShort(DataPayloadIdx, tagsBs.length.toShort)
         buff.putBytes(DataPayloadIdx + 2, tagsBs)
         buff.putBytes(DataPayloadIdx + 2 + tagsBs.length, bs)

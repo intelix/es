@@ -42,7 +42,7 @@ class RoutesServiceActor(id: String) extends StatelessServiceActor(id) with Term
   var routesByService: Map[String, Set[String]] = Map()
 
   onSetRecord {
-    case (Subject(ServiceKey(sKey), TopicKey("routes-lists"), _), set) =>
+    case (Subject(ServiceKey(sKey), TopicKey("sampleapp-routes-lists"), _), set) =>
       val myView = routesByService.getOrElse(sKey, Set())
       println(s"!>>> RoutesService received new set: $set, current: $myView")
       val current = set.asInstanceOf[Set[String]]

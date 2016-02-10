@@ -92,9 +92,10 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
         case 0 =>
           if (maybeMeta.isEmpty) raise(Evt.NewSource, 'id -> id)
           val tsBase = directBuffer.getLong(offset + 17)
-          val fieldsLen = directBuffer.getShort(offset + 17 + 8)
+          val seq = directBuffer.getLong(offset + 17 + 8)
+          val fieldsLen = directBuffer.getShort(offset + 17 + 8 + 8)
           var i = 0
-          var pointer = offset + 17 + 8 + 2
+          var pointer = offset + 17 + 8 + 8 + 2
           var list = List[String]()
           while (i < fieldsLen) {
             val len = directBuffer.getShort(pointer)
@@ -110,17 +111,19 @@ class MediaSubscriptionActor(aeron: Aeron, channel: String, streamId: Int) exten
         case 1 if maybeMeta.isDefined =>
           val meta = maybeMeta.get
           val tsShift = directBuffer.getShort(offset + 17)
+          val seqPartial = directBuffer.getInt(offset + 17 + 2)
           val ts = meta.tsBase + tsShift
-          val str = cloneDataAsString(directBuffer, offset + 17 + 2, length - 17 - 2)
+          val str = cloneDataAsString(directBuffer, offset + 17 + 2 + 4, length - 17 - 2 - 4)
           forwardPayload(StringPayload(ts, meta.tags, str))
           raise(Evt.DataReceived, 'id -> id, 'type -> 1, 'contents -> str)
         case 2 if maybeMeta.isDefined =>
           val meta = maybeMeta.get
           val tsShift = directBuffer.getShort(offset + 17)
+          val seqPartial = directBuffer.getInt(offset + 17 + 2)
           val ts = meta.tsBase + tsShift
-          val tagsLen = directBuffer.getShort(offset + 17 + 2)
-          val tags = cloneDataAsString(directBuffer, offset + 17 + 2 + 2, tagsLen.toInt)
-          val str = cloneDataAsString(directBuffer, offset + 17 + 2 + 2 + tagsLen, length - (17 + 2 + 2 + tagsLen))
+          val tagsLen = directBuffer.getShort(offset + 17 + 2 + 4)
+          val tags = cloneDataAsString(directBuffer, offset + 17 + 2 + 4 + 2, tagsLen.toInt)
+          val str = cloneDataAsString(directBuffer, offset + 17 + 2 + 4 + 2 + tagsLen, length - (17 + 2 + 4 + 2 + tagsLen))
           var allTags = meta.tags
           tags.split('\t').foreach(allTags +:= _)
           forwardPayload(StringPayload(ts, allTags, str))

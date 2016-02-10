@@ -8,7 +8,7 @@ import sbt._
 
 private object Settings {
 
-  val rsVersion = "0.1.2_10-SNAPSHOT"
+  val rsVersion = "0.1.2_11-SNAPSHOT"
   val aeronVersion = "0.9"
   val scalaLoggingVersion = "3.1.0"
   val logbackVersion = "1.1.2"

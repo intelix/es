@@ -20,9 +20,11 @@ class SampleAppService(id: String) extends StatelessServiceActor(id) with Termin
       """.stripMargin,
     "b" ->
       """
-        |type = "tcp"
-        |host = "127.0.0.1"
-        |port = 11000
+        |{
+        |"type": "tcp",
+        |"host": "127.0.0.1",
+        |"port": 11000
+        |}
       """.stripMargin,
     "c" ->
       """
@@ -31,14 +33,14 @@ class SampleAppService(id: String) extends StatelessServiceActor(id) with Termin
         |port = 11001
       """.stripMargin)
 
-  object RoutesListStream extends SimpleStreamIdTemplate("routes-list")
+  object RoutesListStream extends SimpleStreamIdTemplate("sampleapp-routes-list")
 
   object RouteCfgStream extends CompoundStreamIdTemplate[String]("config")
 
-  subscribe(Subject("es-routes", ComplexTopicKey("reversed", id, "routes-lists")))
+  subscribe(Subject("es-routes", ComplexTopicKey("reversed", id, "sampleapp-routes-lists")))
 
   onSubjectMapping {
-    case Subject(_, TopicKey("routes-lists"), _) => RoutesListStream()
+    case Subject(_, TopicKey("sampleapp-routes-lists"), _) => RoutesListStream()
     case Subject(_, CompositeTopicKey("config", i), _) => RouteCfgStream(i)
   }
 
